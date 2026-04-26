@@ -553,8 +553,8 @@ html {
 
         <div id="auth-form">
             <input type="email" autocomplete="off" minlength="8" id="auth-email" placeholder="البريد الإلكتروني" style="margin-bottom: 15px;">
-            <input type="password" minlength="8" autocomplete="off" id="auth-pass" placeholder="كلمة المرور" style="margin-bottom: 25px;">
-            <button id="auth-btn" class="submit-btn" onclick="handleAuth()" style="padding: 15px;">دخول</button>
+           <input type="password" minlength="8" autocomplete="new-password" id="auth-pass" placeholder="كلمة المرور" style="margin-bottom: 25px;">
+            <button id="auth-btn"  class="submit-btn" onclick="handleAuth()" style="padding: 15px;">دخول</button>
         </div>
         <p id="auth-msg" style="color: var(--danger); margin-top: 15px; font-size: 0.9rem;"></p>
     </div>
@@ -571,14 +571,14 @@ html {
     <h2> تسجيل زيارة عميل</h2>
     
     <div class="form-row">
-        <input type="text" id="lat"  placeholder="Lat">
-        <input type="text" id="lng"  placeholder="Lng">
+        <input type="text" id="lat" Autocomplete="off"  placeholder="Lat">
+        <input type="text" id="lng" Autocomplete="off" placeholder="Lng">
     </div>
-    <input style="margin-bottom: 20px !important;" type="text" id="address" placeholder="العنوان المكتشف">
-    
+    <input style="margin-bottom: 20px !important;" type="text" id="address" placeholder="العنوان المكتشف"  autocomplete="off">
+    <input style="margin-bottom: 20px !important;" type="text" id="areaNumber" placeholder="رقم المنطقة" autocomplete="off">
     <div class="form-row">
-        <input type="text" id="name" placeholder="اسم العميل">
-        <input type="tel" id="phone" placeholder="رقم الهاتف">
+        <input type="text" id="name" Autocomplete="off" placeholder="اسم العميل">
+        <input type="tel" id="phone" Autocomplete="off" placeholder="رقم الهاتف">
     </div>
     
     <select style="margin-bottom: 30px !important;" id="status">
@@ -620,7 +620,7 @@ html {
         </div>
     </div>
 
-    <textarea style="margin-bottom: 30px !important;" id="problems" rows="3" placeholder="الملاحظات..."></textarea>
+    <textarea Autocomplete="off" style="margin-bottom: 30px !important;" id="problems" rows="3" placeholder="الملاحظات..."></textarea>
     <button id="submitBtn" class="submit-btn" onclick="sendData()">إرسال التقرير </button>
     <div id="status-msg"></div>
 
@@ -633,172 +633,257 @@ html {
 </div>
 
 <script>
-    // رابط السكريبت الخاص بك
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwaW45tPMAesbhhLP3xUGNUqKB3a65UW_J0PW7MEnXkoSBTJ5ueM4KLFsxJL3fbFSTk/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzltcc-V9T5_CayTponbSlOxslRFrcNjDVFNrEHhLH4VfU78jpGRy6FGqJNqvCWXp3n/exec';
 
-    // 1. تحديد الموقع
-    function getLocation() {
-        if (navigator.geolocation) {
-            document.getElementById('status-msg').innerText = "⏳ جاري تحديد الموقع...";
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                document.getElementById('lat').value = pos.coords.latitude;
-                document.getElementById('lng').value = pos.coords.longitude;
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
-                    const data = await res.json();
-                    document.getElementById('address').value = data.display_name || "موقع مكتشف";
-                    document.getElementById('status-msg').innerText = "✅ تم جلب الموقع";
-                } catch(e) { 
-                    document.getElementById('status-msg').innerText = "✅ تم جلب الإحداثيات"; 
-                }
-            }, (error) => {
-                alert("يرجى تفعيل الـ GPS في المتصفح");
-            });
-        }
+const el = (id) => document.getElementById(id);
+
+let authMode = 'login';
+let isAuthLoading = false;
+
+/* =========================
+   تحميل الجلسة
+========================= */
+window.addEventListener('DOMContentLoaded', () => {
+    if (sessionStorage.getItem('userSession') === 'active') {
+        el('auth-overlay')?.classList.add('hidden');
+    } else {
+        clearAuthFields();
+    }
+});
+
+/* =========================
+   تنظيف حقول الدخول
+========================= */
+function clearAuthFields() {
+    el('auth-email').value = "";
+    el('auth-pass').value = "";
+}
+
+/* =========================
+   تبديل تسجيل الدخول
+========================= */
+function switchAuth(mode) {
+    authMode = mode;
+
+    el('auth-title').innerText = mode === 'login' ? 'دخول النظام' : 'إنشاء حساب';
+    el('auth-btn').innerText = mode === 'login' ? 'دخول' : 'إنشاء الحساب';
+
+    el('tab-login').classList.toggle('active', mode === 'login');
+    el('tab-signup').classList.toggle('active', mode === 'signup');
+
+    clearAuthFields();
+    el('auth-msg').innerText = "";
+}
+
+/* =========================
+   AUTH
+========================= */
+async function handleAuth() {
+    if (isAuthLoading) return;
+
+    const email = el('auth-email').value.trim();
+    const pass = el('auth-pass').value.trim();
+    const msg = el('auth-msg');
+    const btn = el('auth-btn');
+
+    msg.innerText = "";
+
+    if (!email || !pass) return;
+
+    if (pass.length < 8) {
+        msg.innerText = "❌ كلمة المرور قصيرة";
+        return;
     }
 
-    // 2. فتح الخرائط (تم تعديل الرابط ليعتمد على الإحداثيات الحالية في الحقول)
-    function openDirectGPS() {
-        const lat = document.getElementById('lat').value;
-        const lng = document.getElementById('lng').value;
-        if (lat && lng) {
-            // استخدام رابط جوجل ماب المباشر الموثوق
-            window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank');
-        } else {
-            alert("حدد الموقع أولاً");
-        }
-    }
+    isAuthLoading = true;
+    btn.disabled = true;
+    btn.innerText = "جاري...";
 
-    // 3. مسح البيانات (تم تعديلها لتعمل POST)
-    async function clearSheetData() {
-        const pass = prompt("أدخل كلمة المرور لمسح بيانات اليوم:");
-        if (!pass) return;
+    try {
+        const res = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: authMode,
+                email,
+                password: pass
+            })
+        });
 
-        try {
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors', // لضمان الإرسال حتى لو لم يدعم السيرفر CORS
-                body: JSON.stringify({
-                    action: "clearSheet",
-                    pass: pass
-                })
-            });
-            
-            // ملاحظة: مع 'no-cors' لا يمكن قراءة الرد، لذا سنفترض النجاح أو ننتظر ثوانٍ
-            alert("🚀 تم إرسال طلب المسح (تأكد من الشيت بعد ثوانٍ)");
-            location.reload();
-        } catch (e) { 
-            alert("خطأ في الاتصال"); 
-        }
-    }
+        const text = await res.text();
+        const result = JSON.parse(text);
 
-    // 4. إرسال بيانات الزيارة
-    async function sendData() {
-        const btn = document.getElementById('submitBtn');
-        const comps = Array.from(document.querySelectorAll('input[name="comp"]:checked')).map(c => c.value).join(' - ');
-        const prods = Array.from(document.querySelectorAll('input[name="prod"]:checked')).map(p => p.value).join(' - ');
-        const cat = document.querySelector('input[name="cat"]:checked')?.value || "N/A";
+        if (result.result === "success") {
 
-        const payload = {
-            action: "sendData", // إضافة تمييز للعملية
-            lat: document.getElementById('lat').value, 
-            lng: document.getElementById('lng').value,
-            name: document.getElementById('name').value, 
-            address: document.getElementById('address').value,
-            customerPhone: document.getElementById('phone').value, 
-            status: document.getElementById('status').value,
-            competitor: comps, 
-            products: prods, 
-            category: cat, 
-            problems: document.getElementById('problems').value
-        };
-
-        if(!payload.name || !payload.lat) return alert("أكمل البيانات أولاً (الاسم والموقع)");
-        
-        btn.disabled = true; 
-        btn.innerText = "جاري الحفظ...";
-        
-        try {
-            const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
-            const result = await res.json();
-            if(result.result === "success") {
-                document.getElementById('analytics').style.display = "block";
-                document.getElementById('totalVal').innerText = result.stats.total;
-                document.getElementById('activeVal').innerText = result.stats.active;
-                document.getElementById('coverageVal').innerText = result.stats.coverage;
-                alert("🚀 تم الحفظ بنجاح!");
-                // تفريغ الحقول
-                document.querySelectorAll('input:not([readonly]), textarea, select').forEach(i => i.value = '');
-                document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(i => i.checked = false);
-            }
-        } catch (e) { 
-            alert("تم الإرسال بنجاح (يرجى التحقق من الشيت)"); 
-        }
-        btn.disabled = false; 
-        btn.innerText = "إرسال التقرير النهائي 🚀";
-    }
-
-    // 5. نظام الدخول
-    let authMode = 'login';
-
-    function switchAuth(mode) {
-        authMode = mode;
-        document.getElementById('auth-title').innerText = mode === 'login' ? 'دخول النظام' : 'حساب جديد';
-        document.getElementById('auth-btn').innerText = mode === 'login' ? 'دخول' : 'إنشاء الحساب';
-        document.getElementById('tab-login').classList.toggle('active', mode === 'login');
-        document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
-    }
-
-    async function handleAuth() {
-        const email = document.getElementById('auth-email').value;
-        const pass = document.getElementById('auth-pass').value;
-        const msg = document.getElementById('auth-msg');
-        const btn = document.getElementById('auth-btn');
-
-        if (!email || !pass) return alert("يرجى ملء البيانات");
-
-        btn.disabled = true;
-        btn.innerText = "جاري المعالجة...";
-if (pass.length < 8) {
-            msg.innerText = "❌ يجب أن تكون كلمة المرور 8 أرقام أو رموز على الأقل";
-            return;
-        }
-        try {
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    action: authMode,
-                    email: email,
-                    password: pass
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.result === "success") {
-                document.getElementById('auth-overlay').classList.add('hidden');
-                alert(authMode === 'login' ? "✅ تم الدخول بنجاح" : "✅ تم إنشاء الحساب بنجاح");
+            if (authMode === "signup") {
+                alert("تم إنشاء الحساب بنجاح، سجل دخول الآن");
+                switchAuth("login");
             } else {
-                msg.innerText = "❌ " + (result.message || "خطأ في البيانات");
+                sessionStorage.setItem('userSession', 'active');
+                el('auth-overlay').classList.add('hidden');
+                clearAuthFields();
             }
-        } catch (e) {
-            msg.innerText = "⚠️ تم الدخول (تجريبي)";
-            document.getElementById('auth-overlay').classList.add('hidden');
+
+        } else {
+            msg.innerText = "❌ بيانات غير صحيحة";
         }
-        
-        btn.disabled = false;
-        btn.innerText = authMode === 'login' ? 'دخول' : 'إنشاء الحساب';
+
+    } catch (e) {
+        console.log(e);
+        msg.innerText = "⚠️ مشكلة اتصال بالسيرفر";
     }
 
-    // 6. وظيفة تسجيل الخروج
-    function logout() {
-        if(confirm("هل تريد تسجيل الخروج؟")) {
-            document.getElementById('auth-overlay').classList.remove('hidden');
-            // مسح الحقول للأمان
-            document.getElementById('auth-email').value = '';
-            document.getElementById('auth-pass').value = '';
-        }
+    isAuthLoading = false;
+    btn.disabled = false;
+    btn.innerText = authMode === "login" ? "دخول" : "إنشاء الحساب";
+}
+
+/* =========================
+   تحديد الموقع
+========================= */
+function getLocation() {
+    if (!navigator.geolocation) return;
+
+    el('status-msg').innerText = "⏳ جاري تحديد الموقع...";
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        el('lat').value = lat;
+        el('lng').value = lng;
+
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+            const data = await res.json();
+            el('address').value = data.display_name || "موقع مكتشف";
+        } catch {}
+
+        el('status-msg').innerText = "✅ تم جلب الموقع";
+    });
+}
+
+/* =========================
+   فتح خرائط
+========================= */
+function openDirectGPS() {
+    window.open("https://www.google.com/maps/search/?api=1&query=current+location", '_blank');
+}
+
+/* =========================
+   مسح البيانات
+========================= */
+async function clearSheetData() {
+    const pass = prompt("أدخل كلمة المرور:");
+    if (!pass) return;
+
+    try {
+        const res = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: "clearSheet",
+                pass
+            })
+        });
+
+        const text = await res.text();
+        const result = JSON.parse(text);
+
+        alert(result.result === "success" ? "تم المسح" : " تم المسح");
+
+    } catch (e) {
+        console.log(e);
+        alert("مشكلة اتصال بالسيرفر");
     }
+}
+
+/* =========================
+   إرسال البيانات
+========================= */
+async function sendData() {
+    const btn = el('submitBtn');
+
+    const payload = {
+        action: "sendData",
+        lat: el('lat').value,
+        lng: el('lng').value,
+        name: el('name').value,
+        address: el('address').value,
+         areaNumber: el('areaNumber').value,
+        customerPhone: el('phone').value,
+        status: el('status').value,
+        competitor: [...document.querySelectorAll('input[name="comp"]:checked')].map(c => c.value).join(' - '),
+        products: [...document.querySelectorAll('input[name="prod"]:checked')].map(p => p.value).join(' - '),
+        category: document.querySelector('input[name="cat"]:checked')?.value || "N/A",
+        problems: el('problems').value
+    };
+
+    if (!payload.name || !payload.lat || !payload.lng || !payload.address || !payload.status) {
+        return alert("أكمل البيانات");
+    }
+
+    btn.disabled = true;
+    btn.innerText = "جاري الحفظ...";
+
+    try {
+        const res = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        const text = await res.text();
+        const result = JSON.parse(text);
+
+        if (result.result === "success") {
+
+            el('analytics').style.display = "block";
+            el('totalVal').innerText = result.stats.total;
+            el('activeVal').innerText = result.stats.active;
+            el('coverageVal').innerText = result.stats.coverage;
+el('areaNumber').value = "";
+            document.querySelectorAll('input, textarea').forEach(i => {
+                if (i.type !== "radio" && i.type !== "checkbox") i.value = "";
+            });
+
+            document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(i => i.checked = false);
+        }
+
+    } catch (e) {
+        console.log(e);
+        alert("مشكلة اتصال بالسيرفر");
+    }
+
+    btn.disabled = false;
+    btn.innerText = "إرسال التقرير";
+}
+
+/* =========================
+   تسجيل خروج
+========================= */
+function logout() {
+    if (confirm("هل تريد تسجيل الخروج؟")) {
+        sessionStorage.removeItem('userSession');
+        el('auth-overlay').classList.remove('hidden');
+        clearAuthFields();
+        el('auth-msg').innerText = "";
+    }
+}
+
+/* =========================
+   Enter
+========================= */
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    const overlayVisible = !el('auth-overlay').classList.contains('hidden');
+
+    if (overlayVisible) {
+        e.preventDefault();
+        handleAuth();
+    } else {
+        e.preventDefault();
+        sendData();
+    }
+});
 </script>
 </body>
 </html>
